@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+    tools {
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Aakibgithuber/Deploy-Netflix-Clone-on-Kubernetes.git'
+            }
+        }
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh '''$SCANNER_HOME/bin/sonar-scanner \
+                    -Dsonar.projectName=Netflix \
+                    -Dsonar.projectKey=Netflix \
+                    -Dsonar.sources=. \
+                    -Dsonar.host.url=http://165.232.104.196:9000 \
+                    -Dsonar.login=sqp_b693d895c2653d4f2235aa41befe1cb9789b2815'''
+                }
+            }
+        }
+        stage('Quality Gate') {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                }
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+        stage('OWASP Dependency-Check') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        stage('TRIVY FS SCAN') {
+            steps {
+                sh "trivy fs . > trivyfs.txt"
+            }
+        }
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
+                        sh "docker build --build-arg TMDB_V3_API_KEY=a9d2c23c5df186cc63aedecc72a741c9 -t netflix ."
+                        sh "docker tag netflix neyo55/netflix:latest"
+                        sh "docker push neyo55/netflix:latest"
+                    }
+                }
+            }
+        }
+        stage('TRIVY') {
+            steps {
+                sh "trivy image neyo55/netflix:latest > trivyimage.txt"
+            }
+        }
+        stage('Deploy to Container') {
+            steps {
+                sh 'docker run -d --name netflix -p 8081:80 neyo55/netflix:latest'
+            }
+        }
+    }
+}
+
+// If you get docker login failed error
+// sudo su
+// sudo usermod -aG docker jenkins
+// sudo systemctl restart jenkins
