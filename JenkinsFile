@@ -64,14 +64,26 @@ pipeline {
                 }
             }
         }
-        stage('TRIVY') {
+        stage('TRIVY Image Scan') {
             steps {
-                sh "trivy image neyo55/netflix:latest > trivyimage.txt"
+                script {
+                    sh "trivy image neyo55/netflix:latest"
+                }
             }
         }
         stage('Deploy to Container') {
             steps {
-                sh 'docker run -d --name netflix -p 8081:80 neyo55/netflix:latest'
+                script {
+                    // Stop and remove the existing container if it exists
+                    sh '''
+                    if [ "$(docker ps -q -f name=netflix)" ]; then
+                        docker stop netflix
+                        docker rm netflix
+                    fi
+                    '''
+                    // Start the new container
+                    sh "docker run -d --name netflix -p 8081:80 neyo55/netflix:latest"
+                }
             }
         }
     }
