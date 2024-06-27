@@ -77,8 +77,10 @@ pipeline {
                     // Stop and remove the existing container if it exists
                     sh '''
                     if [ "$(docker ps -q -f name=netflix)" ]; then
-                        docker stop netflix
-                        docker rm netflix
+                        docker stop netflix || true
+                        sleep 30
+                        docker rm netflix || true
+                        sleep 30
                     fi
                     '''
                     // Start the new container
